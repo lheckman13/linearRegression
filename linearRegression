@@ -1,0 +1,68 @@
+with fields as(
+select distinct
+Field
+from
+dbo.[510kFieldCodes]),
+
+
+baseTable as(
+select
+a.Year yearDate,
+b.Field
+from
+dbo.dateYear a
+cross join fields b
+where datepart(year,a.Year)<2020),
+
+mdata1 as(
+select
+year(a.decisiondate) as dataYear,
+c.Field as dataField,
+cast(count(distinct a.knumber) as bigint) as kcount
+
+from 
+dbo.[510kDatav] a
+inner join dbo.ProductCodes b on a.PRODUCTCODE=b.PRODUCTCODE
+inner join dbo.[510kFieldCodes] c on c.codes= b.MEDICALSPECIALTY
+
+group by datepart(year, a.decisiondate), c.Field),
+
+
+mdata2 as(
+select
+year(a.yearDate) yearDate,
+a.Field,
+case when mdata1.kcount is null then 0 else mdata1.kcount end as kcount
+from
+baseTable a
+left join mdata1 on dataYear=year(a.yearDate) and mdata1.dataField=a.Field),
+
+mdata3 as(
+SELECT 
+Field,
+cast(SUM(yearDate) as bigint) AS Sx,
+cast(SUM(kcount)as bigint) AS Sy,
+cast(SUM(yearDate * yearDate)as bigint) AS Sxx,
+cast(SUM(yearDate * kcount)as bigint) AS Sxy,
+cast(SUM(kcount * kcount)as bigint) AS Syy,
+COUNT(distinct yeardate) AS N
+FROM mdata2
+group by Field
+),
+
+ mdata4 as(
+SELECT 
+field,
+    ((Sy * Sxx) - (Sx * Sxy))
+    / ((N * (Sxx)) - (Sx * Sx)) AS intercept,
+    (cast((N * Sxy) - (Sx * Sy)as decimal))
+    / (cast((N * Sxx) - (Sx * Sx)as decimal))  AS slope,
+    ((N * Sxy) - (Sx * Sy))
+    / SQRT(
+        (((N * Sxx) - (Sx * Sx))
+         * ((N * Syy - (Sy * Sy))))) AS rho
+FROM
+mdata3
+group by
+field
+) 
